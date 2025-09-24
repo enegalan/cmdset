@@ -40,6 +40,10 @@ int load_presets_json(PresetManager *manager);
 int main(int argc, char *argv[]) {
     PresetManager manager;
     manager.count = 0;
+    
+    // Load existing presets first
+    load_presets_json(&manager);
+    
     int result = parse_arguments(argc, argv, &manager);
     if (result == 0) save_presets_json(&manager); // Save presets if any changes were made
     return result;
@@ -225,80 +229,115 @@ int save_presets_json(PresetManager *manager) {
 int load_presets_json(PresetManager *manager) {
     FILE *file = fopen(PRESET_FILE, "r");
     if (file == NULL) return 1; // File doesn't exist
-    char line[JSON_LINE_BUFFER];
-    manager->count = 0;
-    int in_preset = 0;
-    int preset_index = -1;
-    while (fgets(line, sizeof(line), file) && manager->count < MAX_PRESETS) {
-        char *trimmed = line;
-        while (*trimmed == ' ' || *trimmed == '\t') trimmed++;
-        if (trimmed[strlen(trimmed)-1] == '\n') trimmed[strlen(trimmed)-1] = '\0';
-        // Check for preset start
-        if (strstr(trimmed, "{") != NULL && strstr(trimmed, "\"name\":") != NULL) {
-            in_preset = 1;
-            preset_index = manager->count;
-            manager->presets[preset_index].active = 1;
-            manager->presets[preset_index].created_at = time(NULL);
-            manager->presets[preset_index].last_used = 0;
-            manager->presets[preset_index].use_count = 0;
-        }
-        if (in_preset && preset_index >= 0) {
-            if (strstr(trimmed, "\"name\":") != NULL) {
-                char *start = strchr(trimmed, '"');
-                if (start) {
-                    start++;
-                    char *end = strchr(start, '"');
-                    if (end) {
-                        *end = '\0';
-                        strncpy(manager->presets[preset_index].name, start, MAX_NAME_LEN - 1);
-                        manager->presets[preset_index].name[MAX_NAME_LEN - 1] = '\0';
-                    }
-                }
-            }
-            else if (strstr(trimmed, "\"command\":") != NULL) {
-                char *start = strchr(trimmed, '"');
-                if (start) {
-                    start++;
-                    char *end = strchr(start, '"');
-                    if (end) {
-                        *end = '\0';
-                        strncpy(manager->presets[preset_index].command, start, MAX_COMMAND_LEN - 1);
-                        manager->presets[preset_index].command[MAX_COMMAND_LEN - 1] = '\0';
-                    }
-                }
-            }
-            else if (strstr(trimmed, "\"created_at\":") != NULL) {
-                char *start = strchr(trimmed, ':');
-                if (start) {
-                    start++;
-                    while (*start == ' ') start++;
-                    manager->presets[preset_index].created_at = atol(start);
-                }
-            }
-            else if (strstr(trimmed, "\"last_used\":") != NULL) {
-                char *start = strchr(trimmed, ':');
-                if (start) {
-                    start++;
-                    while (*start == ' ') start++;
-                    manager->presets[preset_index].last_used = atol(start);
-                }
-            }
-            else if (strstr(trimmed, "\"use_count\":") != NULL) {
-                char *start = strchr(trimmed, ':');
-                if (start) {
-                    start++;
-                    while (*start == ' ') start++;
-                    manager->presets[preset_index].use_count = atoi(start);
-                }
-            }
-            else if (strstr(trimmed, "}") != NULL) {
-                manager->count++;
-                in_preset = 0;
-                preset_index = -1;
-            }
-        }
+    
+    // Read entire file into memory
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    
+    char *content = malloc(file_size + 1);
+    if (content == NULL) {
+        fclose(file);
+        return 1;
     }
+    
+    fread(content, 1, file_size, file);
+    content[file_size] = '\0';
     fclose(file);
+    
+    // Simple JSON parsing - find all presets
+    manager->count = 0;
+    char *pos = content;
+    
+    while (*pos && manager->count < MAX_PRESETS) {
+        // Find next preset object by looking for "name": pattern
+        char *preset_start = strstr(pos, "\"name\":");
+        if (preset_start == NULL) break;
+        
+        // Initialize preset
+        manager->presets[manager->count].active = 1;
+        manager->presets[manager->count].created_at = time(NULL);
+        manager->presets[manager->count].last_used = 0;
+        manager->presets[manager->count].use_count = 0;
+        
+        // Parse name - find the value after "name":
+        char *name_start = strstr(preset_start, "\"name\":");
+        if (name_start) {
+            // Skip to the colon and find the value
+            char *colon = strchr(name_start, ':');
+            if (colon) {
+                colon++; // Skip the colon
+                while (*colon == ' ' || *colon == '\t') colon++; // Skip whitespace
+                if (*colon == '"') {
+                    colon++; // Skip the opening quote
+                    char *name_end = strchr(colon, '"');
+                    if (name_end) {
+                        *name_end = '\0';
+                        strncpy(manager->presets[manager->count].name, colon, MAX_NAME_LEN - 1);
+                        manager->presets[manager->count].name[MAX_NAME_LEN - 1] = '\0';
+                        *name_end = '"'; // Restore
+                    }
+                }
+            }
+        }
+        
+        // Parse command - find the value after "command":
+        char *cmd_start = strstr(preset_start, "\"command\":");
+        if (cmd_start) {
+            // Skip to the colon and find the value
+            char *colon = strchr(cmd_start, ':');
+            if (colon) {
+                colon++; // Skip the colon
+                while (*colon == ' ' || *colon == '\t') colon++; // Skip whitespace
+                if (*colon == '"') {
+                    colon++; // Skip the opening quote
+                    char *cmd_end = strchr(colon, '"');
+                    if (cmd_end) {
+                        *cmd_end = '\0';
+                        strncpy(manager->presets[manager->count].command, colon, MAX_COMMAND_LEN - 1);
+                        manager->presets[manager->count].command[MAX_COMMAND_LEN - 1] = '\0';
+                        *cmd_end = '"'; // Restore
+                    }
+                }
+            }
+        }
+        
+        // Parse timestamps and use count
+        char *created_start = strstr(preset_start, "\"created_at\":");
+        if (created_start) {
+            char *value_start = strchr(created_start, ':');
+            if (value_start) {
+                value_start++;
+                while (*value_start == ' ') value_start++;
+                manager->presets[manager->count].created_at = atol(value_start);
+            }
+        }
+        
+        char *last_used_start = strstr(preset_start, "\"last_used\":");
+        if (last_used_start) {
+            char *value_start = strchr(last_used_start, ':');
+            if (value_start) {
+                value_start++;
+                while (*value_start == ' ') value_start++;
+                manager->presets[manager->count].last_used = atol(value_start);
+            }
+        }
+        
+        char *use_count_start = strstr(preset_start, "\"use_count\":");
+        if (use_count_start) {
+            char *value_start = strchr(use_count_start, ':');
+            if (value_start) {
+                value_start++;
+                while (*value_start == ' ') value_start++;
+                manager->presets[manager->count].use_count = atoi(value_start);
+            }
+        }
+        
+        manager->count++;
+        pos = preset_start + 1;
+    }
+    
+    free(content);
     return 0;
 }
 
