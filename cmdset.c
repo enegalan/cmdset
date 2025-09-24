@@ -4,18 +4,21 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <time.h>
 
 #define MAX_PRESETS 100
 #define MAX_NAME_LEN 50
 #define MAX_COMMAND_LEN 500
 #define PRESET_FILE ".cmdset_presets"
-#define SEPARATOR "|||CMDSEP|||"
-#define MAX_LINE_LEN (MAX_NAME_LEN + MAX_COMMAND_LEN + 20)
+#define JSON_LINE_BUFFER 1024
 
 typedef struct {
     char name[MAX_NAME_LEN];
     char command[MAX_COMMAND_LEN];
     int active;
+    time_t created_at;
+    time_t last_used;
+    int use_count;
 } Preset;
 
 typedef struct {
@@ -29,18 +32,16 @@ int add_preset(PresetManager *manager, const char *name, const char *command);
 int remove_preset(PresetManager *manager, const char *name);
 int list_presets(PresetManager *manager);
 int execute_preset(PresetManager *manager, const char *name);
-int save_presets(PresetManager *manager);
-int load_presets(PresetManager *manager);
 Preset* find_preset(PresetManager *manager, const char *name);
-void encode_string(const char *input, char *output);
-void decode_string(const char *input, char *output);
+void json_escape_string(const char *input, char *output);
+int save_presets_json(PresetManager *manager);
+int load_presets_json(PresetManager *manager);
 
 int main(int argc, char *argv[]) {
     PresetManager manager;
     manager.count = 0;
-    load_presets(&manager);
     int result = parse_arguments(argc, argv, &manager);
-    if (result == 0) save_presets(&manager); // Save presets if any changes were made
+    if (result == 0) save_presets_json(&manager); // Save presets if any changes were made
     return result;
 }
 
@@ -119,6 +120,9 @@ int add_preset(PresetManager *manager, const char *name, const char *command) {
     strcpy(manager->presets[manager->count].name, name);
     strcpy(manager->presets[manager->count].command, command);
     manager->presets[manager->count].active = 1;
+    manager->presets[manager->count].created_at = time(NULL);
+    manager->presets[manager->count].last_used = 0;
+    manager->presets[manager->count].use_count = 0;
     manager->count++;
     printf("Preset '%s' added successfully\n", name);
     return 0;
@@ -158,6 +162,8 @@ int execute_preset(PresetManager *manager, const char *name) {
         printf("Error: Preset '%s' not found\n", name);
         return 1;
     }
+    preset->last_used = time(NULL);
+    preset->use_count++;
     printf("Executing: %s\n", preset->command);
     printf("----------------------------------------\n");
     int result = system(preset->command);
@@ -168,131 +174,132 @@ int execute_preset(PresetManager *manager, const char *name) {
     return result;
 }
 
-int save_presets(PresetManager *manager) {
+void json_escape_string(const char *input, char *output) {
+    int j = 0;
+    for (int i = 0; input[i] != '\0' && j < MAX_COMMAND_LEN * 2 - 1; i++) {
+        switch (input[i]) {
+            case '"':  output[j++] = '\\'; output[j++] = '"'; break;
+            case '\\': output[j++] = '\\'; output[j++] = '\\'; break;
+            case '\n': output[j++] = '\\'; output[j++] = 'n'; break;
+            case '\r': output[j++] = '\\'; output[j++] = 'r'; break;
+            case '\t': output[j++] = '\\'; output[j++] = 't'; break;
+            default:   output[j++] = input[i]; break;
+        }
+    }
+    output[j] = '\0';
+}
+
+int save_presets_json(PresetManager *manager) {
     FILE *file = fopen(PRESET_FILE, "w");
     if (file == NULL) {
         printf("Error: Could not save presets to file: %s\n", strerror(errno));
         return 1;
     }
+    fprintf(file, "{\n");
+    fprintf(file, "  \"version\": \"2.0\",\n");
+    fprintf(file, "  \"presets\": [\n");
+    int first = 1;
     for (int i = 0; i < manager->count; i++) {
         if (manager->presets[i].active) {
-            char encoded_command[MAX_COMMAND_LEN * 2];
-            encode_string(manager->presets[i].command, encoded_command);
-            fprintf(file, "%s%s%s\n",
-                manager->presets[i].name,
-                SEPARATOR,
-                encoded_command);
+            if (!first) fprintf(file, ",\n");
+            first = 0;
+            char escaped_name[MAX_NAME_LEN * 2];
+            char escaped_command[MAX_COMMAND_LEN * 2];
+            json_escape_string(manager->presets[i].name, escaped_name);
+            json_escape_string(manager->presets[i].command, escaped_command);
+            fprintf(file, "    {\n");
+            fprintf(file, "      \"name\": \"%s\",\n", escaped_name);
+            fprintf(file, "      \"command\": \"%s\",\n", escaped_command);
+            fprintf(file, "      \"created_at\": %ld,\n", manager->presets[i].created_at);
+            fprintf(file, "      \"last_used\": %ld,\n", manager->presets[i].last_used);
+            fprintf(file, "      \"use_count\": %d\n", manager->presets[i].use_count);
+            fprintf(file, "    }");
         }
     }
+    fprintf(file, "\n  ]\n");
+    fprintf(file, "}\n");
     fclose(file);
     return 0;
 }
 
-int load_presets(PresetManager *manager) {
+int load_presets_json(PresetManager *manager) {
     FILE *file = fopen(PRESET_FILE, "r");
-    if (file == NULL) return 0; // File doesn't exist, start with empty presets
-    char line[MAX_LINE_LEN];
+    if (file == NULL) return 1; // File doesn't exist
+    char line[JSON_LINE_BUFFER];
     manager->count = 0;
+    int in_preset = 0;
+    int preset_index = -1;
     while (fgets(line, sizeof(line), file) && manager->count < MAX_PRESETS) {
-        line[strcspn(line, "\n")] = 0;
-        char *separator = strstr(line, SEPARATOR); // Find separator
-        if (separator == NULL) continue; // Skip malformed lines
-        *separator = '\0';
-        char *name = line;
-        char *encoded_command = separator + strlen(SEPARATOR);
-        if (strlen(name) < MAX_NAME_LEN && strlen(encoded_command) < MAX_COMMAND_LEN * 2) {
-            char decoded_command[MAX_COMMAND_LEN];
-            decode_string(encoded_command, decoded_command);
-            strcpy(manager->presets[manager->count].name, name);
-            strcpy(manager->presets[manager->count].command, decoded_command);
-            manager->presets[manager->count].active = 1;
-            manager->count++;
+        char *trimmed = line;
+        while (*trimmed == ' ' || *trimmed == '\t') trimmed++;
+        if (trimmed[strlen(trimmed)-1] == '\n') trimmed[strlen(trimmed)-1] = '\0';
+        // Check for preset start
+        if (strstr(trimmed, "{") != NULL && strstr(trimmed, "\"name\":") != NULL) {
+            in_preset = 1;
+            preset_index = manager->count;
+            manager->presets[preset_index].active = 1;
+            manager->presets[preset_index].created_at = time(NULL);
+            manager->presets[preset_index].last_used = 0;
+            manager->presets[preset_index].use_count = 0;
+        }
+        if (in_preset && preset_index >= 0) {
+            if (strstr(trimmed, "\"name\":") != NULL) {
+                char *start = strchr(trimmed, '"');
+                if (start) {
+                    start++;
+                    char *end = strchr(start, '"');
+                    if (end) {
+                        *end = '\0';
+                        strncpy(manager->presets[preset_index].name, start, MAX_NAME_LEN - 1);
+                        manager->presets[preset_index].name[MAX_NAME_LEN - 1] = '\0';
+                    }
+                }
+            }
+            else if (strstr(trimmed, "\"command\":") != NULL) {
+                char *start = strchr(trimmed, '"');
+                if (start) {
+                    start++;
+                    char *end = strchr(start, '"');
+                    if (end) {
+                        *end = '\0';
+                        strncpy(manager->presets[preset_index].command, start, MAX_COMMAND_LEN - 1);
+                        manager->presets[preset_index].command[MAX_COMMAND_LEN - 1] = '\0';
+                    }
+                }
+            }
+            else if (strstr(trimmed, "\"created_at\":") != NULL) {
+                char *start = strchr(trimmed, ':');
+                if (start) {
+                    start++;
+                    while (*start == ' ') start++;
+                    manager->presets[preset_index].created_at = atol(start);
+                }
+            }
+            else if (strstr(trimmed, "\"last_used\":") != NULL) {
+                char *start = strchr(trimmed, ':');
+                if (start) {
+                    start++;
+                    while (*start == ' ') start++;
+                    manager->presets[preset_index].last_used = atol(start);
+                }
+            }
+            else if (strstr(trimmed, "\"use_count\":") != NULL) {
+                char *start = strchr(trimmed, ':');
+                if (start) {
+                    start++;
+                    while (*start == ' ') start++;
+                    manager->presets[preset_index].use_count = atoi(start);
+                }
+            }
+            else if (strstr(trimmed, "}") != NULL) {
+                manager->count++;
+                in_preset = 0;
+                preset_index = -1;
+            }
         }
     }
     fclose(file);
     return 0;
-}
-
-void encode_string(const char *input, char *output) {
-    int j = 0;
-    for (int i = 0; input[i] != '\0' && j < MAX_COMMAND_LEN - 1; i++) {
-        switch (input[i]) {
-            case '\n':
-                output[j++] = '\\';
-                output[j++] = 'n';
-                break;
-            case '\r':
-                output[j++] = '\\';
-                output[j++] = 'r';
-                break;
-            case '\t':
-                output[j++] = '\\';
-                output[j++] = 't';
-                break;
-            case '\\':
-                output[j++] = '\\';
-                output[j++] = '\\';
-                break;
-            case '|':
-                output[j++] = '\\';
-                output[j++] = 'p';
-                break;
-            case '&':
-                output[j++] = '\\';
-                output[j++] = 'a';
-                break;
-            case ';':
-                output[j++] = '\\';
-                output[j++] = 's';
-                break;
-            default:
-                output[j++] = input[i];
-                break;
-        }
-    }
-    output[j] = '\0';
-}
-
-void decode_string(const char *input, char *output) {
-    int j = 0;
-    for (int i = 0; input[i] != '\0' && j < MAX_COMMAND_LEN - 1; i++) {
-        if (input[i] == '\\' && input[i + 1] != '\0') {
-            switch (input[i + 1]) {
-                case 'n':
-                    output[j++] = '\n';
-                    i++;
-                    break;
-                case 'r':
-                    output[j++] = '\r';
-                    i++;
-                    break;
-                case 't':
-                    output[j++] = '\t';
-                    i++;
-                    break;
-                case '\\':
-                    output[j++] = '\\';
-                    i++;
-                    break;
-                case 'p':
-                    output[j++] = '|';
-                    i++;
-                    break;
-                case 'a':
-                    output[j++] = '&';
-                    i++;
-                    break;
-                case 's':
-                    output[j++] = ';';
-                    i++;
-                    break;
-                default:
-                    output[j++] = input[i];
-                    break;
-            }
-        } else output[j++] = input[i];
-    }
-    output[j] = '\0';
 }
 
 Preset* find_preset(PresetManager *manager, const char *name) {

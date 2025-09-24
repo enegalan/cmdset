@@ -9,6 +9,10 @@ CmdSet is a simple CLI tool written in C that allows you to save frequently used
 - **List Presets**: View all saved command presets
 - **Remove Presets**: Delete presets you no longer need
 - **Persistent Storage**: Presets are saved to a file and persist between sessions
+- **Usage Statistics**: Track when presets were created and how often they're used
+- **Command Shortcuts**: Use short abbreviations for faster command entry
+- **JSON Format**: Modern, human-readable storage format
+- **Special Character Support**: Safely handles pipes, ampersands, and other special characters
 
 ## Building
 
@@ -90,6 +94,18 @@ cmdset remove <name>
 cmdset rm <name>            # Short version
 ```
 
+### Command Shortcuts
+
+CmdSet supports convenient shortcuts for all commands:
+
+| Full Command | Shortcut | Alternative | Description |
+|--------------|----------|-------------|-------------|
+| `help` | `h` | - | Show help |
+| `add` | `a` | - | Add preset |
+| `remove` | `rm` | - | Remove preset |
+| `list` | `ls` | - | List presets |
+| `exec` | `e` | `run` | Execute preset |
+
 ### Examples
 
 ```bash
@@ -126,25 +142,33 @@ make test
 - Each preset consists of a name and the full command to execute
 - Commands are executed using the system shell
 - The program supports up to 100 presets with names up to 50 characters and commands up to 500 characters
+- **Usage tracking**: The system tracks when presets were created, last used, and how many times they've been executed
 
 ## File Format
 
-The preset file uses a robust format that safely handles special characters:
-```
-preset_name|||CMDSEP|||encoded_command
-another_preset|||CMDSEP|||another_encoded_command
-```
+The preset file uses a modern JSON format that safely handles special characters and includes metadata:
 
-Special characters in commands are encoded to prevent conflicts:
-- `|` (pipe) → `\p`
-- `&` (ampersand) → `\a`
-- `;` (semicolon) → `\s`
-- `\` (backslash) → `\\`
-- `\n` (newline) → `\\n`
-- `\r` (carriage return) → `\\r`
-- `\t` (tab) → `\\t`
-
-This ensures that commands with pipes, ampersands, semicolons, and other special characters are stored and executed correctly.
+```json
+{
+  "version": "2.0",
+  "presets": [
+    {
+      "name": "command1",
+      "command": "git status --porcelain",
+      "created_at": 1758749561,
+      "last_used": 1758749600,
+      "use_count": 5
+    },
+    {
+      "name": "command2",
+      "command": "docker build -t myapp .",
+      "created_at": 1758749500,
+      "last_used": 0,
+      "use_count": 0
+    }
+  ]
+}
+```
 
 ## Error Handling
 
@@ -153,9 +177,12 @@ The program includes comprehensive error handling for:
 - Preset name conflicts
 - File I/O errors
 - Command execution failures
+- JSON parsing errors
+- Memory allocation failures
 
 ## Limitations
 
 - Maximum 100 presets
 - Preset names limited to 50 characters
 - Commands limited to 500 characters
+- JSON file must be manually edited with care (use `cmdset` commands when possible)
