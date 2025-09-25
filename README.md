@@ -13,16 +13,31 @@ CmdSet is a simple CLI tool written in C that allows you to save frequently used
 - **Command Shortcuts**: Use short abbreviations for faster command entry
 - **JSON Format**: Modern, human-readable storage format
 - **Special Character Support**: Safely handles pipes, ampersands, and other special characters
+- **🔐 Encryption Support**: Encrypt sensitive commands with AES-256 encryption
+- **🔑 Master Password**: Secure master password protection for encrypted presets
+- **🛡️ Cross-Platform**: Works on macOS, Linux, and Windows
 
 ## Building
 
-To build the project:
+### Prerequisites
+
+CmdSet requires OpenSSL for encryption features. See [INSTALL.md](INSTALL.md) for detailed installation instructions for your platform.
+
+### Quick Build
 
 ```bash
 make
 ```
 
 This will create the `cmdset` executable.
+
+### Cross-Platform Support
+
+The Makefile automatically detects your operating system and configures the build accordingly:
+
+- **macOS**: Uses Homebrew or MacPorts OpenSSL
+- **Linux**: Uses system OpenSSL or pkg-config
+- **Windows**: Uses MSYS2, vcpkg, or manual OpenSSL installation
 
 ## Installation
 
@@ -80,6 +95,11 @@ cmdset h                    # Short version
 cmdset add <name> <command>
 cmdset a <name> <command>   # Short version
 
+# Add an encrypted preset
+cmdset add -e <name> <command>
+cmdset add --encrypt <name> <command>
+cmdset a -e <name> <command>        # Short version
+
 # Execute a preset
 cmdset exec <name>
 cmdset e <name>             # Short version
@@ -102,6 +122,7 @@ CmdSet supports convenient shortcuts for all commands:
 |--------------|----------|-------------|-------------|
 | `help` | `h` | - | Show help |
 | `add` | `a` | - | Add preset |
+| `add -e` | `a -e` | `add --encrypt` | Add encrypted preset |
 | `remove` | `rm` | - | Remove preset |
 | `list` | `ls` | - | List presets |
 | `exec` | `e` | `run` | Execute preset |
@@ -118,8 +139,15 @@ cmdset add backup "tar -czf backup-$(date +%Y%m%d).tar.gz /important/data"
 # Add sequential commands
 cmdset add server-status "ssh user@server 'systemctl status nginx && systemctl status mysql'"
 
+# Add encrypted commands for sensitive operations
+cmdset add -e db-backup "mysqldump -u root -p'secret123' mydb > backup.sql"
+cmdset add --encrypt api-deploy "curl -H 'Authorization: Bearer token123' -X POST https://api.example.com/deploy"
+
 # Execute the git status preset
 cmdset exec git-status
+
+# Execute encrypted preset (prompts for master password)
+cmdset exec db-backup
 
 # List all presets
 cmdset list
@@ -127,6 +155,29 @@ cmdset list
 # Remove a preset
 cmdset remove git-status
 ```
+
+### Encrypted Commands
+
+For sensitive commands containing passwords, API keys, or other confidential information:
+
+```bash
+# Add an encrypted preset
+cmdset add -e db-backup "mysqldump -u root -p'secret123' mydb > backup.sql"
+cmdset add --encrypt api-call "curl -H 'Authorization: Bearer token123' https://api.example.com"
+
+# List presets (encrypted commands show as [ENCRYPTED])
+cmdset list
+
+# Execute encrypted preset (prompts for master password)
+cmdset exec db-backup
+```
+
+**Security Features:**
+- **AES-256-CBC** encryption with random salt and IV
+- **PBKDF2** key derivation with 10,000 iterations
+- **Master password** protection
+- **Memory clearing** after decryption
+- **Base64 encoding** for safe JSON storage
 
 ### Testing
 
@@ -155,6 +206,7 @@ The preset file uses a modern JSON format that safely handles special characters
     {
       "name": "command1",
       "command": "git status --porcelain",
+      "encrypt": false,
       "created_at": 1758749561,
       "last_used": 1758749600,
       "use_count": 5
@@ -162,7 +214,16 @@ The preset file uses a modern JSON format that safely handles special characters
     {
       "name": "command2",
       "command": "docker build -t myapp .",
+      "encrypt": false,
       "created_at": 1758749500,
+      "last_used": 0,
+      "use_count": 0
+    },
+    {
+      "name": "secret-command",
+      "command": "U2FsdGVkX1+vupppZksvRf5pq5g5XjFRlipRkwB0K1Y=",
+      "encrypt": true,
+      "created_at": 1758749600,
       "last_used": 0,
       "use_count": 0
     }
@@ -186,3 +247,6 @@ The program includes comprehensive error handling for:
 - Preset names limited to 50 characters
 - Commands limited to 500 characters
 - JSON file must be manually edited with care (use `cmdset` commands when possible)
+- Encrypted commands require OpenSSL to be installed
+- Master password is not stored and must be entered each time an encrypted command is executed
+- Cross-platform compatibility requires OpenSSL installation on target system
