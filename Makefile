@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -O2
-LDFLAGS = -lcrypto
+LDFLAGS = -lcrypto -ljson-c
 TARGET = cmdset
 SOURCE = cmdset.c
 
@@ -13,15 +13,25 @@ ifeq ($(UNAME_S),Darwin)
         CFLAGS += -I/usr/local/opt/openssl/include
         LDFLAGS += -L/usr/local/opt/openssl/lib
     endif
+    ifneq ($(wildcard /opt/homebrew/Cellar/json-c),)
+        CFLAGS += -I/opt/homebrew/Cellar/json-c/0.18/include
+        LDFLAGS += -L/opt/homebrew/Cellar/json-c/0.18/lib
+    endif
 else ifeq ($(UNAME_S),Linux)
     ifneq ($(wildcard /usr/include/openssl),)
     else ifneq ($(wildcard /usr/local/include/openssl),)
         CFLAGS += -I/usr/local/include
         LDFLAGS += -L/usr/local/lib
     endif
+	ifneq ($(wildcard /usr/include/json-c),)
+		CFLAGS += -I/usr/include/json-c
+		LDFLAGS += -L/usr/lib/json-c
+	endif
 else ifeq ($(OS),Windows_NT)
     CFLAGS += $(shell pkg-config --cflags openssl 2>/dev/null || echo "")
     LDFLAGS += $(shell pkg-config --libs openssl 2>/dev/null || echo "-lcrypto")
+    CFLAGS += $(shell pkg-config --cflags json-c 2>/dev/null || echo "")
+    LDFLAGS += $(shell pkg-config --libs json-c 2>/dev/null || echo "-ljson-c")
 endif
 all: $(TARGET)
 

@@ -9,6 +9,7 @@
 #include <openssl/rand.h>
 #include <openssl/sha.h>
 #include <openssl/aes.h>
+#include <json-c/json.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -52,7 +53,6 @@ int remove_preset(PresetManager *manager, const char *name);
 int list_presets(PresetManager *manager);
 int execute_preset(PresetManager *manager, const char *name);
 Preset* find_preset(PresetManager *manager, const char *name);
-void json_escape_string(const char *input, char *output);
 int save_presets_json(PresetManager *manager);
 int load_presets_json(PresetManager *manager);
 int encrypt_command(const char *plaintext, char *encrypted);
@@ -257,52 +257,53 @@ int execute_preset(PresetManager *manager, const char *name) {
     return result;
 }
 
-void json_escape_string(const char *input, char *output) {
-    int j = 0;
-    for (int i = 0; input[i] != '\0' && j < MAX_COMMAND_LEN * 2 - 1; i++) {
-        switch (input[i]) {
-            case '"':  output[j++] = '\\'; output[j++] = '"'; break;
-            case '\\': output[j++] = '\\'; output[j++] = '\\'; break;
-            case '\n': output[j++] = '\\'; output[j++] = 'n'; break;
-            case '\r': output[j++] = '\\'; output[j++] = 'r'; break;
-            case '\t': output[j++] = '\\'; output[j++] = 't'; break;
-            default:   output[j++] = input[i]; break;
-        }
-    }
-    output[j] = '\0';
-}
 
 int save_presets_json(PresetManager *manager) {
+    json_object *root = json_object_new_object();
+    if (root == NULL) {
+        printf("Error: Could not create JSON object\n");
+        return 1;
+    }
+    json_object *version = json_object_new_string("2.0");
+    json_object_object_add(root, "version", version);
+    json_object *presets_array = json_object_new_array();
+    if (presets_array == NULL) {
+        json_object_put(root);
+        printf("Error: Could not create presets array\n");
+        return 1;
+    }
+    for (int i = 0; i < manager->count; i++) {
+        if (manager->presets[i].active) {
+            json_object *preset = json_object_new_object();
+            if (preset == NULL) {
+                json_object_put(root);
+                return 1;
+            }
+            json_object_object_add(preset, "name", json_object_new_string(manager->presets[i].name));
+            json_object_object_add(preset, "command", json_object_new_string(manager->presets[i].command));
+            json_object_object_add(preset, "encrypt", json_object_new_boolean(manager->presets[i].encrypt));
+            json_object_object_add(preset, "created_at", json_object_new_int64(manager->presets[i].created_at));
+            json_object_object_add(preset, "last_used", json_object_new_int64(manager->presets[i].last_used));
+            json_object_object_add(preset, "use_count", json_object_new_int(manager->presets[i].use_count));
+            json_object_array_add(presets_array, preset);
+        }
+    }
+    json_object_object_add(root, "presets", presets_array);
+    const char *json_string = json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY);
+    if (json_string == NULL) {
+        json_object_put(root);
+        printf("Error: Could not generate JSON string\n");
+        return 1;
+    }
     FILE *file = fopen(PRESET_FILE, "w");
     if (file == NULL) {
+        json_object_put(root);
         printf("Error: Could not save presets to file: %s\n", strerror(errno));
         return 1;
     }
-    fprintf(file, "{\n");
-    fprintf(file, "  \"version\": \"2.0\",\n");
-    fprintf(file, "  \"presets\": [\n");
-    int first = 1;
-    for (int i = 0; i < manager->count; i++) {
-        if (manager->presets[i].active) {
-            if (!first) fprintf(file, ",\n");
-            first = 0;
-            char escaped_name[MAX_NAME_LEN * 2];
-            char escaped_command[MAX_COMMAND_LEN * 2];
-            json_escape_string(manager->presets[i].name, escaped_name);
-            json_escape_string(manager->presets[i].command, escaped_command);
-            fprintf(file, "    {\n");
-            fprintf(file, "      \"name\": \"%s\",\n", escaped_name);
-            fprintf(file, "      \"command\": \"%s\",\n", escaped_command);
-            fprintf(file, "      \"encrypt\": %s,\n", manager->presets[i].encrypt ? "true" : "false");
-            fprintf(file, "      \"created_at\": %ld,\n", manager->presets[i].created_at);
-            fprintf(file, "      \"last_used\": %ld,\n", manager->presets[i].last_used);
-            fprintf(file, "      \"use_count\": %d\n", manager->presets[i].use_count);
-            fprintf(file, "    }");
-        }
-    }
-    fprintf(file, "\n  ]\n");
-    fprintf(file, "}\n");
+    fprintf(file, "%s", json_string);
     fclose(file);
+    json_object_put(root);
     return 0;
 }
 
@@ -320,93 +321,49 @@ int load_presets_json(PresetManager *manager) {
     fread(content, 1, file_size, file);
     content[file_size] = '\0';
     fclose(file);
-    manager->count = 0;
-    char *pos = content;
-    while (*pos && manager->count < MAX_PRESETS) {
-        char *preset_start = strstr(pos, "\"name\":");
-        if (preset_start == NULL) break;
-        manager->presets[manager->count].active = 1;
-        manager->presets[manager->count].encrypt = 0;
-        manager->presets[manager->count].created_at = time(NULL);
-        manager->presets[manager->count].last_used = 0;
-        manager->presets[manager->count].use_count = 0;
-        char *name_start = strstr(preset_start, "\"name\":");
-        if (name_start) {
-            char *colon = strchr(name_start, ':');
-            if (colon) {
-                colon++; // Skip the colon
-                while (*colon == ' ' || *colon == '\t') colon++; // Skip whitespace
-                if (*colon == '"') {
-                    colon++; // Skip the opening quote
-                    char *name_end = strchr(colon, '"');
-                    if (name_end) {
-                        *name_end = '\0';
-                        strncpy(manager->presets[manager->count].name, colon, MAX_NAME_LEN - 1);
-                        manager->presets[manager->count].name[MAX_NAME_LEN - 1] = '\0';
-                        *name_end = '"'; // Restore
-                    }
-                }
-            }
-        }
-        char *cmd_start = strstr(preset_start, "\"command\":");
-        if (cmd_start) {
-            char *colon = strchr(cmd_start, ':');
-            if (colon) {
-                colon++; // Skip the colon
-                while (*colon == ' ' || *colon == '\t') colon++; // Skip whitespace
-                if (*colon == '"') {
-                    colon++; // Skip the opening quote
-                    char *cmd_end = strchr(colon, '"');
-                    if (cmd_end) {
-                        *cmd_end = '\0';
-                        strncpy(manager->presets[manager->count].command, colon, MAX_COMMAND_LEN - 1);
-                        manager->presets[manager->count].command[MAX_COMMAND_LEN - 1] = '\0';
-                        *cmd_end = '"'; // Restore
-                    }
-                }
-            }
-        }
-        char *encrypt_start = strstr(preset_start, "\"encrypt\":");
-        if (encrypt_start) {
-            char *value_start = strchr(encrypt_start, ':');
-            if (value_start) {
-                value_start++;
-                while (*value_start == ' ') value_start++;
-                if (strstr(value_start, "true") != NULL) manager->presets[manager->count].encrypt = 1;
-                else if (strstr(value_start, "false") != NULL) manager->presets[manager->count].encrypt = 0;
-            }
-        }
-        char *created_start = strstr(preset_start, "\"created_at\":");
-        if (created_start) {
-            char *value_start = strchr(created_start, ':');
-            if (value_start) {
-                value_start++;
-                while (*value_start == ' ') value_start++;
-                manager->presets[manager->count].created_at = atol(value_start);
-            }
-        }
-        char *last_used_start = strstr(preset_start, "\"last_used\":");
-        if (last_used_start) {
-            char *value_start = strchr(last_used_start, ':');
-            if (value_start) {
-                value_start++;
-                while (*value_start == ' ') value_start++;
-                manager->presets[manager->count].last_used = atol(value_start);
-            }
-        }
-        char *use_count_start = strstr(preset_start, "\"use_count\":");
-        if (use_count_start) {
-            char *value_start = strchr(use_count_start, ':');
-            if (value_start) {
-                value_start++;
-                while (*value_start == ' ') value_start++;
-                manager->presets[manager->count].use_count = atoi(value_start);
-            }
-        }
-        manager->count++;
-        pos = preset_start + 1;
-    }
+    json_object *root = json_tokener_parse(content);
     free(content);
+    if (root == NULL) {
+        printf("Error: Could not parse JSON file\n");
+        return 1;
+    }
+    manager->count = 0;
+    json_object *presets_array;
+    if (json_object_object_get_ex(root, "presets", &presets_array) && json_object_is_type(presets_array, json_type_array)) {
+        int array_size = json_object_array_length(presets_array);
+        for (int i = 0; i < array_size && manager->count < MAX_PRESETS; i++) {
+            json_object *preset = json_object_array_get_idx(presets_array, i);
+            if (preset != NULL) {
+                manager->presets[manager->count].active = 1;
+                json_object *name_item;
+                if (json_object_object_get_ex(preset, "name", &name_item) && json_object_is_type(name_item, json_type_string)) {
+                    const char *name_str = json_object_get_string(name_item);
+                    strncpy(manager->presets[manager->count].name, name_str, MAX_NAME_LEN - 1);
+                    manager->presets[manager->count].name[MAX_NAME_LEN - 1] = '\0';
+                }
+                json_object *command_item;
+                if (json_object_object_get_ex(preset, "command", &command_item) && json_object_is_type(command_item, json_type_string)) {
+                    const char *command_str = json_object_get_string(command_item);
+                    strncpy(manager->presets[manager->count].command, command_str, MAX_COMMAND_LEN - 1);
+                    manager->presets[manager->count].command[MAX_COMMAND_LEN - 1] = '\0';
+                }
+                json_object *encrypt_item;
+                if (json_object_object_get_ex(preset, "encrypt", &encrypt_item)) manager->presets[manager->count].encrypt = json_object_get_boolean(encrypt_item) ? 1 : 0;
+                else manager->presets[manager->count].encrypt = 0;
+                json_object *created_item;
+                if (json_object_object_get_ex(preset, "created_at", &created_item) && json_object_is_type(created_item, json_type_int)) manager->presets[manager->count].created_at = (time_t)json_object_get_int64(created_item);
+                else manager->presets[manager->count].created_at = time(NULL);
+                json_object *last_used_item;
+                if (json_object_object_get_ex(preset, "last_used", &last_used_item) && json_object_is_type(last_used_item, json_type_int)) manager->presets[manager->count].last_used = (time_t)json_object_get_int64(last_used_item);
+                else manager->presets[manager->count].last_used = 0;
+                json_object *use_count_item;
+                if (json_object_object_get_ex(preset, "use_count", &use_count_item) && json_object_is_type(use_count_item, json_type_int)) manager->presets[manager->count].use_count = json_object_get_int(use_count_item);
+                else manager->presets[manager->count].use_count = 0;
+                manager->count++;
+            }
+        }
+    }
+    
     return 0;
 }
 
