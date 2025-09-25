@@ -51,7 +51,7 @@ int parse_arguments(int argc, char *argv[], PresetManager *manager);
 int add_preset(PresetManager *manager, const char *name, const char *command, int encrypt);
 int remove_preset(PresetManager *manager, const char *name);
 int list_presets(PresetManager *manager);
-int execute_preset(PresetManager *manager, const char *name);
+int execute_preset(PresetManager *manager, const char *name, const char *additional_args);
 Preset* find_preset(PresetManager *manager, const char *name);
 int save_presets_json(PresetManager *manager);
 int load_presets_json(PresetManager *manager);
@@ -83,9 +83,9 @@ void print_usage(const char *program_name) {
     printf(" %s rm <name>                   Remove a preset (short)\n", program_name);
     printf(" %s list                       List all presets\n", program_name);
     printf(" %s ls                         List all presets (short)\n", program_name);
-    printf(" %s exec <name>                Execute a preset\n", program_name);
-    printf(" %s e <name>                   Execute a preset (short)\n", program_name);
-    printf(" %s run <name>                 Execute a preset (short)\n", program_name);
+    printf(" %s exec <name> [args...]      Execute a preset with optional arguments\n", program_name);
+    printf(" %s e <name> [args...]          Execute a preset with optional arguments (short)\n", program_name);
+    printf(" %s run <name> [args...]        Execute a preset with optional arguments (short)\n", program_name);
     printf(" %s help                       Show this help message\n", program_name);
     printf(" %s h                          Show this help message (short)\n", program_name);
     printf(" %s clear-session              Clear cached password session\n", program_name);
@@ -145,10 +145,29 @@ int parse_arguments(int argc, char *argv[], PresetManager *manager) {
     if (strcmp(argv[1], "exec") == 0 || strcmp(argv[1], "e") == 0 || strcmp(argv[1], "run") == 0) {
         if (argc < 3) {
             printf("Error: exec command requires name argument\n");
-            printf("Usage: %s exec <name>\n", argv[0]);
+            printf("Usage: %s exec <name> [additional_args...]\n", argv[0]);
             return 1;
         }
-        return execute_preset(manager, argv[2]);
+        char *additional_args = NULL;
+        if (argc > 3) {
+            int total_len = 0;
+            for (int i = 3; i < argc; i++) {
+                total_len += strlen(argv[i]) + 1;
+            }
+            additional_args = malloc(total_len);
+            if (additional_args == NULL) {
+                printf("Error: Memory allocation failed\n");
+                return 1;
+            }
+            additional_args[0] = '\0';
+            for (int i = 3; i < argc; i++) {
+                if (i > 3) strcat(additional_args, " ");
+                strcat(additional_args, argv[i]);
+            }
+        }
+        int result = execute_preset(manager, argv[2], additional_args);
+        if (additional_args) free(additional_args);
+        return result;
     }
     printf("Error: Unknown command '%s'\n", argv[1]);
     print_usage(argv[0]);
@@ -228,7 +247,7 @@ int list_presets(PresetManager *manager) {
     return 0;
 }
 
-int execute_preset(PresetManager *manager, const char *name) {
+int execute_preset(PresetManager *manager, const char *name, const char *additional_args) {
     Preset *preset = find_preset(manager, name);
     if (preset == NULL) {
         printf("Error: Preset '%s' not found\n", name);
@@ -242,21 +261,39 @@ int execute_preset(PresetManager *manager, const char *name) {
             printf("Error: Failed to decrypt command\n");
             return 1;
         }
-        printf("Executing encrypted command: [HIDDEN]\n");
+        printf("Executing encrypted command: [HIDDEN]");
     } else {
         strcpy(command_to_execute, preset->command);
-        printf("Executing: %s\n", command_to_execute);
+        printf("Executing: %s", command_to_execute);
     }
+    if (additional_args != NULL && strlen(additional_args) > 0) {
+        if (strstr(command_to_execute, " -e") != NULL) {
+            char *dash_e_pos = strstr(command_to_execute, " -e");
+            if (dash_e_pos != NULL) {
+                char temp_command[MAX_COMMAND_LEN];
+                int base_len = dash_e_pos - command_to_execute;
+                strncpy(temp_command, command_to_execute, base_len);
+                temp_command[base_len] = '\0';
+                strcat(temp_command, " -e \"");
+                strcat(temp_command, additional_args);
+                strcat(temp_command, "\"");
+                strcpy(command_to_execute, temp_command);
+            }
+        } else {
+            strcat(command_to_execute, " ");
+            strcat(command_to_execute, additional_args);
+        }
+        if (!preset->encrypt) printf(" %s", additional_args);
+    }
+    printf("\n");
     printf("----------------------------------------\n");
     int result = system(command_to_execute);
     if (result != 0) {
-        printf("----------------------------------------\n");
         printf("Command exited with status %d\n", result);
     }
     if (preset->encrypt) memset(command_to_execute, 0, MAX_COMMAND_LEN); // Clear sensitive data from memory
     return result;
 }
-
 
 int save_presets_json(PresetManager *manager) {
     json_object *root = json_object_new_object();

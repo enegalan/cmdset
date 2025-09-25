@@ -101,9 +101,9 @@ cmdset add --encrypt <name> <command>
 cmdset a -e <name> <command>        # Short version
 
 # Execute a preset
-cmdset exec <name>
-cmdset e <name>             # Short version
-cmdset run <name>           # Alternative short version
+cmdset exec <name> [args...]
+cmdset e <name> [args...]             # Short version
+cmdset run <name> [args...]           # Alternative short version
 
 # List all presets
 cmdset list
@@ -154,6 +154,31 @@ cmdset list
 
 # Remove a preset
 cmdset remove git-status
+```
+
+### Dynamic Arguments
+
+CmdSet supports adding arguments to presets at execution time. This is particularly useful for database commands and other tools that accept dynamic parameters:
+
+```bash
+# Add a base database command
+cmdset add mariadb-query "mariadb -e"
+
+# Execute with dynamic SQL query
+cmdset exec mariadb-query "SHOW TABLES;"
+# This executes: mariadb -e "SHOW TABLES;"
+
+# Add a base MySQL command
+cmdset add mysql-query "mysql -e"
+
+# Execute with different queries
+cmdset exec mysql-query "SELECT COUNT(*) FROM users;"
+cmdset exec mysql-query "DESCRIBE products;"
+
+# Works with any command that accepts additional arguments
+cmdset add ls-dir "ls -la"
+cmdset exec ls-dir "/path/to/directory"
+# This executes: ls -la /path/to/directory
 ```
 
 ### Encrypted Commands
