@@ -15,6 +15,7 @@ CmdSet is a simple CLI tool written in C that allows you to save frequently used
 - **Special Character Support**: Safely handles pipes, ampersands, and other special characters
 - **🔐 Encryption Support**: Encrypt sensitive commands with AES-256 encryption
 - **🔑 Master Password**: Secure master password protection for encrypted presets
+- **📤 Export/Import**: Backup and restore presets with JSON export/import
 - **🛡️ Cross-Platform**: Works on macOS, Linux, and Windows
 
 ## Building
@@ -112,6 +113,14 @@ cmdset ls                   # Short version
 # Remove a preset
 cmdset remove <name>
 cmdset rm <name>            # Short version
+
+# Export presets to file
+cmdset export [filename]
+cmdset exp [filename]       # Short version
+
+# Import presets from file
+cmdset import [filename]
+cmdset imp [filename]       # Short version
 ```
 
 ### Command Shortcuts
@@ -126,6 +135,8 @@ CmdSet supports convenient shortcuts for all commands:
 | `remove` | `rm` | - | Remove preset |
 | `list` | `ls` | - | List presets |
 | `exec` | `e` | `run` | Execute preset |
+| `export` | `exp` | - | Export presets |
+| `import` | `imp` | - | Import presets |
 
 ### Examples
 
@@ -154,6 +165,20 @@ cmdset list
 
 # Remove a preset
 cmdset remove git-status
+
+# Export all presets to a backup file
+cmdset export backup.json
+
+# Import presets from a backup file
+cmdset import backup.json
+
+# Interactive export (prompts for filename)
+cmdset export
+# Enter export file path: my_presets.json
+
+# Interactive import (prompts for filename)
+cmdset import
+# Enter import file path: my_presets.json
 ```
 
 ### Dynamic Arguments
@@ -203,6 +228,23 @@ cmdset exec db-backup
 - **Master password** protection
 - **Memory clearing** after decryption
 - **Base64 encoding** for safe JSON storage
+
+### Import/Export
+
+CmdSet supports backing up and restoring presets using JSON export/import functionality.
+
+**Export Features:**
+- Exports all active presets with full metadata
+- Preserves encryption status and usage statistics
+- Creates human-readable JSON format
+- Includes export timestamp
+
+**Import Features:**
+- Validates JSON file format before importing
+- Skips duplicate presets with clear warnings
+- Preserves all preset metadata
+- Handles conflicts gracefully
+- Reports import statistics
 
 ### Testing
 
@@ -255,6 +297,29 @@ The preset file uses a modern JSON format that safely handles special characters
   ]
 }
 ```
+
+### Export Format
+
+When exporting presets, the JSON includes additional metadata:
+
+```json
+{
+  "version": "2.0",
+  "exported_at": 1758833494,
+  "presets": [
+    {
+      "name": "git-status",
+      "command": "git status --porcelain",
+      "encrypt": false,
+      "created_at": 1758749561,
+      "last_used": 1758749600,
+      "use_count": 5
+    }
+  ]
+}
+```
+
+The export format is fully compatible with the import functionality and can be used to backup, restore, or share presets between different systems.
 
 ## Error Handling
 

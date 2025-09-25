@@ -63,6 +63,10 @@ int get_session_password(char *password, int max_len);
 int is_session_valid(void);
 void clear_session(void);
 void show_session_status(void);
+int export_presets(PresetManager *manager, const char *filename);
+int import_presets(PresetManager *manager, const char *filename);
+int select_import_file(char *filename, int max_len);
+int select_export_file(char *filename, int max_len);
 
 int main(int argc, char *argv[]) {
     PresetManager manager;
@@ -92,6 +96,10 @@ void print_usage(const char *program_name) {
     printf(" %s cs                         Clear cached password session (short)\n", program_name);
     printf(" %s status                     Show session status\n", program_name);
     printf(" %s s                          Show session status (short)\n", program_name);
+    printf(" %s export [filename]          Export presets to JSON file\n", program_name);
+    printf(" %s exp [filename]             Export presets to JSON file (short)\n", program_name);
+    printf(" %s import [filename]          Import presets from JSON file\n", program_name);
+    printf(" %s imp [filename]             Import presets from JSON file (short)\n", program_name);
 }
 
 int parse_arguments(int argc, char *argv[], PresetManager *manager) {
@@ -110,6 +118,26 @@ int parse_arguments(int argc, char *argv[], PresetManager *manager) {
     if (strcmp(argv[1], "status") == 0 || strcmp(argv[1], "s") == 0) {
         show_session_status();
         return 0;
+    }
+    if (strcmp(argv[1], "export") == 0 || strcmp(argv[1], "exp") == 0) {
+        char filename[256];
+        if (argc >= 3) {
+            strncpy(filename, argv[2], sizeof(filename) - 1);
+            filename[sizeof(filename) - 1] = '\0';
+        } else {
+            if (select_export_file(filename, sizeof(filename)) != 0) return 1;
+        }
+        return export_presets(manager, filename);
+    }
+    if (strcmp(argv[1], "import") == 0 || strcmp(argv[1], "imp") == 0) {
+        char filename[256];
+        if (argc >= 3) {
+            strncpy(filename, argv[2], sizeof(filename) - 1);
+            filename[sizeof(filename) - 1] = '\0';
+        } else {
+            if (select_import_file(filename, sizeof(filename)) != 0) return 1;
+        }
+        return import_presets(manager, filename);
     }
     if (strcmp(argv[1], "add") == 0 || strcmp(argv[1], "a") == 0) {
         if (argc < 4) {
@@ -626,5 +654,172 @@ int decrypt_command(const char *encrypted, char *plaintext) {
     free(decoded);
     memset(master_password, 0, sizeof(master_password));
     memset(key, 0, KEY_LEN);
+    return 0;
+}
+
+int export_presets(PresetManager *manager, const char *filename) {
+    json_object *root = json_object_new_object();
+    if (root == NULL) {
+        printf("Error: Could not create JSON object\n");
+        return 1;
+    }
+    json_object *version = json_object_new_string("2.0");
+    json_object_object_add(root, "version", version);
+    json_object *exported_at = json_object_new_int64(time(NULL));
+    json_object_object_add(root, "exported_at", exported_at);
+    json_object *presets_array = json_object_new_array();
+    if (presets_array == NULL) {
+        json_object_put(root);
+        printf("Error: Could not create presets array\n");
+        return 1;
+    }
+    int exported_count = 0;
+    for (int i = 0; i < manager->count; i++) {
+        if (manager->presets[i].active) {
+            json_object *preset = json_object_new_object();
+            if (preset == NULL) {
+                json_object_put(root);
+                return 1;
+            }
+            json_object_object_add(preset, "name", json_object_new_string(manager->presets[i].name));
+            json_object_object_add(preset, "command", json_object_new_string(manager->presets[i].command));
+            json_object_object_add(preset, "encrypt", json_object_new_boolean(manager->presets[i].encrypt));
+            json_object_object_add(preset, "created_at", json_object_new_int64(manager->presets[i].created_at));
+            json_object_object_add(preset, "last_used", json_object_new_int64(manager->presets[i].last_used));
+            json_object_object_add(preset, "use_count", json_object_new_int(manager->presets[i].use_count));
+            json_object_array_add(presets_array, preset);
+            exported_count++;
+        }
+    }
+    json_object_object_add(root, "presets", presets_array);
+    const char *json_string = json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY);
+    if (json_string == NULL) {
+        json_object_put(root);
+        printf("Error: Could not generate JSON string\n");
+        return 1;
+    }
+    FILE *file = fopen(filename, "w");
+    if (file == NULL) {
+        json_object_put(root);
+        printf("Error: Could not create export file '%s': %s\n", filename, strerror(errno));
+        return 1;
+    }
+    fprintf(file, "%s", json_string);
+    fclose(file);
+    json_object_put(root);
+    printf("Successfully exported %d preset(s) to '%s'\n", exported_count, filename);
+    return 0;
+}
+
+int import_presets(PresetManager *manager, const char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (file == NULL) {
+        printf("Error: Could not open import file '%s': %s\n", filename, strerror(errno));
+        return 1;
+    }
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    char *content = malloc(file_size + 1);
+    if (content == NULL) {
+        fclose(file);
+        printf("Error: Memory allocation failed\n");
+        return 1;
+    }
+    fread(content, 1, file_size, file);
+    content[file_size] = '\0';
+    fclose(file);
+    json_object *root = json_tokener_parse(content);
+    free(content);
+    if (root == NULL) {
+        printf("Error: Could not parse JSON file\n");
+        return 1;
+    }
+    json_object *presets_array;
+    if (!json_object_object_get_ex(root, "presets", &presets_array) || !json_object_is_type(presets_array, json_type_array)) {
+        json_object_put(root);
+        printf("Error: Invalid preset file format - missing presets array\n");
+        return 1;
+    }
+    int array_size = json_object_array_length(presets_array);
+    int imported_count = 0;
+    int skipped_count = 0;
+    for (int i = 0; i < array_size && manager->count < MAX_PRESETS; i++) {
+        json_object *preset = json_object_array_get_idx(presets_array, i);
+        if (preset != NULL) {
+            json_object *name_item;
+            if (!json_object_object_get_ex(preset, "name", &name_item) || !json_object_is_type(name_item, json_type_string)) {
+                printf("Warning: Skipping preset %d - missing or invalid name\n", i + 1);
+                skipped_count++;
+                continue;
+            }
+            const char *name_str = json_object_get_string(name_item);
+            if (find_preset(manager, name_str) != NULL) {
+                printf("Warning: Skipping preset '%s' - already exists\n", name_str);
+                skipped_count++;
+                continue;
+            }
+            manager->presets[manager->count].active = 1;
+            strncpy(manager->presets[manager->count].name, name_str, MAX_NAME_LEN - 1);
+            manager->presets[manager->count].name[MAX_NAME_LEN - 1] = '\0';
+            json_object *command_item;
+            if (json_object_object_get_ex(preset, "command", &command_item) && json_object_is_type(command_item, json_type_string)) {
+                const char *command_str = json_object_get_string(command_item);
+                strncpy(manager->presets[manager->count].command, command_str, MAX_COMMAND_LEN - 1);
+                manager->presets[manager->count].command[MAX_COMMAND_LEN - 1] = '\0';
+            } else {
+                printf("Warning: Skipping preset '%s' - missing or invalid command\n", name_str);
+                skipped_count++;
+                continue;
+            }
+            json_object *encrypt_item;
+            if (json_object_object_get_ex(preset, "encrypt", &encrypt_item)) manager->presets[manager->count].encrypt = json_object_get_boolean(encrypt_item) ? 1 : 0;
+            else manager->presets[manager->count].encrypt = 0;
+            json_object *created_item;
+            if (json_object_object_get_ex(preset, "created_at", &created_item) && json_object_is_type(created_item, json_type_int)) manager->presets[manager->count].created_at = (time_t)json_object_get_int64(created_item);
+            else manager->presets[manager->count].created_at = time(NULL);
+            json_object *last_used_item;
+            if (json_object_object_get_ex(preset, "last_used", &last_used_item) && json_object_is_type(last_used_item, json_type_int)) manager->presets[manager->count].last_used = (time_t)json_object_get_int64(last_used_item);
+            else manager->presets[manager->count].last_used = 0;
+            json_object *use_count_item;
+            if (json_object_object_get_ex(preset, "use_count", &use_count_item) && json_object_is_type(use_count_item, json_type_int)) manager->presets[manager->count].use_count = json_object_get_int(use_count_item);
+            else manager->presets[manager->count].use_count = 0;
+            manager->count++;
+            imported_count++;
+        }
+    }
+    json_object_put(root);
+    printf("Successfully imported %d preset(s) from '%s'\n", imported_count, filename);
+    if (skipped_count > 0) printf("Skipped %d preset(s) due to conflicts or errors\n", skipped_count);
+    return 0;
+}
+
+int select_import_file(char *filename, int max_len) {
+    printf("Enter import file path: ");
+    fflush(stdout);
+    if (fgets(filename, max_len, stdin) == NULL) {
+        printf("Error: Could not read filename\n");
+        return 1;
+    }
+    filename[strcspn(filename, "\n")] = '\0';
+    if (strlen(filename) == 0) {
+        printf("Error: No filename provided\n");
+        return 1;
+    }
+    return 0;
+}
+
+int select_export_file(char *filename, int max_len) {
+    printf("Enter export file path: ");
+    fflush(stdout);
+    if (fgets(filename, max_len, stdin) == NULL) {
+        printf("Error: Could not read filename\n");
+        return 1;
+    }
+    filename[strcspn(filename, "\n")] = '\0';
+    if (strlen(filename) == 0) {
+        printf("Error: No filename provided\n");
+        return 1;
+    }
     return 0;
 }
