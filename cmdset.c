@@ -813,6 +813,7 @@ static int decrypt_command_internal(const char *encrypted, char *plaintext, cons
     return 0;
 }
 
+#ifndef CMDSET_BUILD_LIB
 void print_usage(const char* program_name) {
     printf("Usage: %s [command] [options...]\n", program_name);
     printf(" %s add <name> <command>                Add a new preset\n", program_name);
@@ -999,3 +1000,4 @@ int main(int argc, char* argv[]) {
     cmdset_cleanup(&manager);
     return 0;
 }
+#endif // CMDSET_BUILD_LIB

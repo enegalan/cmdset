@@ -4,7 +4,13 @@ LDFLAGS = -lcrypto -ljson-c
 TARGET = cmdset
 SOURCE = cmdset.c
 
+SO_EXT = so
+SHARED_LDFLAGS = -shared
+
 UNAME_S := $(shell uname -s)
+
+SHARED_TARGET = libcmdset.$(SO_EXT)
+
 ifeq ($(UNAME_S),Darwin)
     ifneq ($(wildcard /opt/homebrew/opt/openssl@3/include),)
         CFLAGS += -I/opt/homebrew/opt/openssl@3/include
@@ -38,8 +44,13 @@ all: $(TARGET)
 $(TARGET): $(SOURCE)
 	$(CC) $(CFLAGS) -o $(TARGET) $(SOURCE) $(LDFLAGS)
 
+shared: $(SHARED_TARGET)
+
+$(SHARED_TARGET): $(SOURCE) cmdset.h
+	$(CC) $(CFLAGS) -fPIC $(SHARED_LDFLAGS) -DCMDSET_BUILD_LIB -o $(SHARED_TARGET) $(SOURCE) $(LDFLAGS)
+
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) $(SHARED_TARGET)
 
 install: $(TARGET)
 	@echo "Installing cmdset globally..."
