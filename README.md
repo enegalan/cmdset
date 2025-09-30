@@ -2,29 +2,28 @@
 
 CmdSet is a simple CLI tool written in C that allows you to save frequently used commands as presets and execute them with shorter commands. This eliminates the need to type long commands repeatedly.
 
-## Features
+## ✨ Features
 
-- **Add Presets**: Save any command with a short name
-- **Execute Presets**: Run saved commands with simple names
-- **List Presets**: View all saved command presets
-- **Remove Presets**: Delete presets you no longer need
-- **Persistent Storage**: Presets are saved to a file and persist between sessions
-- **Usage Statistics**: Track when presets were created and how often they're used
-- **Command Shortcuts**: Use short abbreviations for faster command entry
-- **JSON Format**: Modern, human-readable storage format
-- **Special Character Support**: Safely handles pipes, ampersands, and other special characters
+- **🗂️ Add Presets**: Save any command with a short name
+- **▶️ Execute Presets**: Run saved commands with simple names
+- **📋 List Presets**: View all saved command presets
+- **🗑️ Remove Presets**: Delete presets you no longer need
+- **💾 Persistent Storage**: Presets are saved to a file and persist between sessions
+- **📊 Usage Statistics**: Track when presets were created and how often they're used
+- **📄 JSON Format**: Modern, human-readable storage format
+- **🔧 Special Character Support**: Safely handles pipes, ampersands, and other special characters
 - **🔐 Encryption Support**: Encrypt sensitive commands with AES-256 encryption
 - **🔑 Master Password**: Secure master password protection for encrypted presets
 - **📤 Export/Import**: Backup and restore presets with JSON export/import
 - **🛡️ Cross-Platform**: Works on macOS, Linux, and Windows
 
-## Building
+## 🔨 Building
 
-### Prerequisites
+### 📋 Prerequisites
 
 CmdSet requires OpenSSL for encryption features. See [INSTALL.md](INSTALL.md) for detailed installation instructions for your platform.
 
-### Quick Build
+### ⚡️ Quick Build
 
 ```bash
 make
@@ -32,17 +31,36 @@ make
 
 This will create the `cmdset` executable.
 
-### Cross-Platform Support
+### 📚 Shared Library Build
+
+```bash
+make shared
+```
+
+This will create the `libcmdset.so` shared library, which provides a C API for integrating CmdSet functionality into other applications. The shared library includes all the core functionality:
+
+- **🔧 C API**: Complete C interface for programmatic access
+- **🐍 Python Bindings**: Python wrapper for easy integration
+- **📦 Cross-Platform**: Works on macOS, Linux, and Windows
+- **🔐 Full Feature Support**: Includes encryption, export/import, and all CLI features
+
+**Use Cases:**
+- **🛠️ Development Tools**: Integrate command presets into IDEs and editors
+- **📊 Automation Scripts**: Use CmdSet functionality in larger applications
+- **🔌 Plugin Systems**: Extend applications with command preset capabilities
+- **📱 GUI Applications**: Build graphical interfaces for command management
+
+### 🌐 Cross-Platform Support
 
 The Makefile automatically detects your operating system and configures the build accordingly:
 
-- **macOS**: Uses Homebrew or MacPorts OpenSSL
-- **Linux**: Uses system OpenSSL or pkg-config
-- **Windows**: Uses MSYS2, vcpkg, or manual OpenSSL installation
+- **🍎 macOS**: Uses Homebrew or MacPorts OpenSSL
+- **🐧 Linux**: Uses system OpenSSL or pkg-config
+- **🪟 Windows**: Uses MSYS2, vcpkg, or manual OpenSSL installation
 
-## Installation
+## 📦 Installation
 
-### Global Installation (Recommended)
+### 🌍 Global Installation (Recommended)
 
 To install cmdset globally so you can use it from any directory:
 
@@ -59,7 +77,7 @@ make install
 make status
 ```
 
-### Uninstallation
+### 🗑️ Uninstallation
 
 To remove the global installation:
 
@@ -71,7 +89,7 @@ sudo ./setup.sh uninstall
 make uninstall
 ```
 
-### Manual Installation
+### 🔧 Manual Installation
 
 If you prefer manual installation:
 
@@ -83,9 +101,9 @@ sudo ln -s $(pwd)/cmdset /usr/local/bin/cmdset
 sudo rm /usr/local/bin/cmdset
 ```
 
-## Usage
+## 🚀 Usage
 
-### Basic Commands
+### 🧷 Basic Commands
 
 ```bash
 # Show help
@@ -123,7 +141,7 @@ cmdset import [filename]
 cmdset imp [filename]       # Short version
 ```
 
-### Command Shortcuts
+### ⌨️ Command Shortcuts
 
 CmdSet supports convenient shortcuts for all commands:
 
@@ -138,7 +156,7 @@ CmdSet supports convenient shortcuts for all commands:
 | `export` | `exp` | - | Export presets |
 | `import` | `imp` | - | Import presets |
 
-### Examples
+### 💡 Examples
 
 ```bash
 # Add a git status preset
@@ -181,7 +199,7 @@ cmdset import
 # Enter import file path: my_presets.json
 ```
 
-### Dynamic Arguments
+### 🔄 Dynamic Arguments
 
 CmdSet supports adding arguments to presets at execution time. This is particularly useful for database commands and other tools that accept dynamic parameters:
 
@@ -206,7 +224,7 @@ cmdset exec ls-dir "/path/to/directory"
 # This executes: ls -la /path/to/directory
 ```
 
-### Encrypted Commands
+### 🔐 Encrypted Commands
 
 For sensitive commands containing passwords, API keys, or other confidential information:
 
@@ -222,31 +240,31 @@ cmdset list
 cmdset exec db-backup
 ```
 
-**Security Features:**
-- **AES-256-CBC** encryption with random salt and IV
-- **PBKDF2** key derivation with 10,000 iterations
-- **Master password** protection
-- **Memory clearing** after decryption
-- **Base64 encoding** for safe JSON storage
+**🔒 Security Features:**
+- **🔐 AES-256-CBC** encryption with random salt and IV
+- **🔑 PBKDF2** key derivation with 10,000 iterations
+- **🛡️ Master password** protection
+- **🧹 Memory clearing** after decryption
+- **📝 Base64 encoding** for safe JSON storage
 
-### Import/Export
+### 📤📥 Import/Export
 
 CmdSet supports backing up and restoring presets using JSON export/import functionality.
 
-**Export Features:**
+**📤 Export Features:**
 - Exports all active presets with full metadata
 - Preserves encryption status and usage statistics
 - Creates human-readable JSON format
 - Includes export timestamp
 
-**Import Features:**
+**📥 Import Features:**
 - Validates JSON file format before importing
 - Skips duplicate presets with clear warnings
 - Preserves all preset metadata
 - Handles conflicts gracefully
 - Reports import statistics
 
-### Testing
+### 🧪 Testing
 
 Run the test suite to verify everything works:
 
@@ -254,15 +272,100 @@ Run the test suite to verify everything works:
 make test
 ```
 
-## How It Works
+## 📚 Shared Library Usage
 
-- Presets are stored in a hidden file `.cmdset_presets` in the current directory
-- Each preset consists of a name and the full command to execute
-- Commands are executed using the system shell
-- The program supports up to 100 presets with names up to 50 characters and commands up to 500 characters
-- **Usage tracking**: The system tracks when presets were created, last used, and how many times they've been executed
+The shared library provides a complete C API for integrating CmdSet functionality into your applications.
 
-## File Format
+### 🔧 C API Example
+
+```c
+#include "cmdset.h"
+#include <stdio.h>
+
+int main() {
+    cmdset_manager_t manager;
+    // Initialize the manager
+    if (cmdset_init(&manager) != 0) {
+        fprintf(stderr, "Failed to initialize CmdSet\n");
+        return 1;
+    }
+    // Add a preset
+    cmdset_add_preset(&manager, "hello", "echo 'Hello World!'", 0);
+    // List presets
+    char output[4096];
+    cmdset_list_presets(&manager, output, sizeof(output));
+    printf("Presets:\n%s\n", output);
+    // Execute a preset
+    cmdset_execute_preset(&manager, "hello", NULL);
+    // Cleanup
+    cmdset_cleanup(&manager);
+    return 0;
+}
+```
+
+### 🐍 Python API Example
+
+```python
+from cmdset import CmdSet
+
+# Initialize CmdSet
+cmdset = CmdSet()
+# Add a preset
+cmdset.add("git-status", "git status --porcelain")
+# Add an encrypted preset
+cmdset.add("secret-command", "echo 'secret data'", encrypt=True)
+# List all presets
+presets = cmdset.list()
+for preset in presets:
+    print(f"{preset.name}: {preset.command}")
+    print(f"  Encrypted: {preset.is_encrypted}")
+    print(f"  Use count: {preset.use_count}")
+# Execute a preset
+exit_code = cmdset.exec("git-status")
+print(f"Command exited with code: {exit_code}")
+# Cleanup
+cmdset.close()
+```
+
+### 🔧 Available API Functions
+
+The shared library provides the following C functions:
+
+**Core Management:**
+- `cmdset_init()` - Initialize the CmdSet manager
+- `cmdset_cleanup()` - Clean up resources
+- `cmdset_add_preset()` - Add a new command preset
+- `cmdset_remove_preset()` - Remove a preset
+- `cmdset_execute_preset()` - Execute a preset with optional arguments
+
+**Data Access:**
+- `cmdset_list_presets()` - Get formatted list of all presets
+- `cmdset_find_preset()` - Find a specific preset by name
+- `cmdset_get_preset_count()` - Get total number of presets
+- `cmdset_get_preset_by_index()` - Get preset by index
+
+**Persistence:**
+- `cmdset_save_presets()` - Save presets to file
+- `cmdset_load_presets()` - Load presets from file
+- `cmdset_export_presets()` - Export presets to JSON file
+- `cmdset_import_presets()` - Import presets from JSON file
+
+**Security:**
+- `cmdset_encrypt_command()` - Encrypt a command string
+- `cmdset_decrypt_command()` - Decrypt a command string
+
+**Utilities:**
+- `cmdset_get_error_message()` - Get human-readable error messages
+
+## ⚙️ How It Works
+
+- **📁 Hidden file:** Presets are stored in a hidden file `.cmdset_presets` in the current directory
+- **🏷️ Name command** Each preset consists of a name and the full command to execute
+- **🖥️ System execution** Commands are executed using the system shell
+- **📊 Limit support** The program supports up to 100 presets with names up to 50 characters and commands up to 500 characters
+- **📈 Usage tracking**: The system tracks when presets were created, last used, and how many times they've been executed
+
+## 📄 File Format
 
 The preset file uses a modern JSON format that safely handles special characters and includes metadata:
 
@@ -298,7 +401,7 @@ The preset file uses a modern JSON format that safely handles special characters
 }
 ```
 
-### Export Format
+### 📤 Export Format
 
 When exporting presets, the JSON includes additional metadata:
 
@@ -321,22 +424,22 @@ When exporting presets, the JSON includes additional metadata:
 
 The export format is fully compatible with the import functionality and can be used to backup, restore, or share presets between different systems.
 
-## Error Handling
+## ⚠️ Error Handling
 
 The program includes comprehensive error handling for:
-- Invalid command line arguments
-- Preset name conflicts
-- File I/O errors
-- Command execution failures
-- JSON parsing errors
-- Memory allocation failures
+- ❌ Invalid command line arguments
+- 🔄 Preset name conflicts
+- 📁 File I/O errors
+- 🚫 Command execution failures
+- 📄 JSON parsing errors
+- 💾 Memory allocation failures
 
-## Limitations
+## ⚠️ Limitations
 
-- Maximum 100 presets
-- Preset names limited to 50 characters
-- Commands limited to 500 characters
-- JSON file must be manually edited with care (use `cmdset` commands when possible)
-- Encrypted commands require OpenSSL to be installed
-- Master password is not stored and must be entered each time an encrypted command is executed
-- Cross-platform compatibility requires OpenSSL installation on target system
+- 📊 Maximum 100 presets
+- 🏷️ Preset names limited to 50 characters
+- 📝 Commands limited to 500 characters
+- ⚠️ JSON file must be manually edited with care (use `cmdset` commands when possible)
+- 🔐 Encrypted commands require OpenSSL to be installed
+- 🔑 Master password is not stored and must be entered each time an encrypted command is executed
+- 🌐 Cross-platform compatibility requires OpenSSL installation on target system

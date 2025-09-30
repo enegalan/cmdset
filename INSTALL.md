@@ -133,10 +133,3 @@ gcc -Wall -Wextra -std=c99 -O2 -o cmdset cmdset.c -lcrypto
 # Windows (adjust paths according to installation)
 gcc -Wall -Wextra -std=c99 -O2 -o cmdset.exe cmdset.c -lcrypto
 ```
-
-## Portability Notes
-
-- The code uses `#ifdef _WIN32` to detect Windows
-- On Unix/Linux/macOS uses `stty` to hide the password
-- On Windows uses the Windows console API
-- OpenSSL is the only external dependency required
