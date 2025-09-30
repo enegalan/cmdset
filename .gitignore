@@ -2,7 +2,4 @@
 cmdset
 .DS_Store
 .vscode
-dist/*/build
-dist/*/cmdset.egg-info
-dist/*/dist
 *.so
